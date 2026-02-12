@@ -69,6 +69,7 @@
             <button onclick="switchTool('merge')" id="nav-merge" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Merge</button>
             <button onclick="switchTool('resize')" id="nav-resize" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Bulk Resize</button>
             <button onclick="switchTool('crop')" id="nav-crop" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Mass Crop</button>
+            <button onclick="switchTool('compress')" id="nav-compress" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Compressor</button>
         </nav>
     </aside>
 
@@ -248,6 +249,61 @@
             <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800 mb-6"><input type="file" multiple onchange="handleCropUpload(this)" class="w-full text-xs" accept="image/*"></div>
             <div id="crop-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </section>
+
+        <!-- PHOTO COMPRESSOR (NEW) -->
+        <section id="tool-compress" class="tool-view hidden max-w-6xl mx-auto">
+            <header class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold">Photo Compressor</h2>
+                    <p class="text-slate-500 text-sm">Reduce file sizes by stripping metadata, optimizing quality, and resizing.</p>
+                </div>
+                <button onclick="downloadCompressZip()" id="dl-compress-zip" style="display:none" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">Download All (.ZIP)</button>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800">
+                        <label class="block text-sm font-bold mb-2">Upload Images</label>
+                        <input type="file" multiple onchange="handleCompressUpload(this)" class="w-full text-xs text-slate-500" accept="image/*">
+                    </div>
+                    
+                    <div id="compress-controls" class="hidden bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800 space-y-6">
+                        <div>
+                            <div class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
+                                <span>Output Quality</span>
+                                <span id="comp-qual-val">80%</span>
+                            </div>
+                            <input type="range" id="comp-qual-range" min="5" max="100" value="80" oninput="processCompression()" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
+                                <span>Resize Scale</span>
+                                <span id="comp-scale-val">100%</span>
+                            </div>
+                            <input type="range" id="comp-scale-range" min="10" max="100" value="100" oninput="processCompression()" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+
+                        <div>
+                            <span class="text-[10px] font-black uppercase text-slate-400">Final Format</span>
+                            <div class="flex mt-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                                <button onclick="setCompressFormat('jpg')" id="cf-jpg" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">JPG</button>
+                                <button onclick="setCompressFormat('png')" id="cf-png" class="flex-1 py-1 text-xs rounded">PNG</button>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 text-[10px] text-slate-400 italic">
+                            Converting to JPG 80% and back to PNG effectively strips bloat and metadata.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3">
+                    <div id="compress-gallery" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+                    <p id="compress-empty" class="text-center py-20 text-slate-400 italic">No images uploaded for compression</p>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script>
@@ -277,13 +333,22 @@
                 reader.onload = (e) => {
                     const img = new Image();
                     img.onload = () => {
-                        imgs[i] = { img, name: file.name }; loaded++;
+                        imgs[i] = { img, name: file.name, size: file.size }; loaded++;
                         if (loaded === fileList.length) callback(imgs);
                     };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             });
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
         // --- Split Logic Module ---
@@ -336,7 +401,7 @@
             if (singleSplitImg) renderSplitToCanvas(document.getElementById('split-canvas'), singleSplitImg, singleSplitCfg);
         }
 
-        // --- Tool: Custom Cut (UPDATED) ---
+        // --- Tool: Custom Cut ---
         let ccImg = null;
         let ccFileName = "";
         let ccAxis = 'h';
@@ -380,7 +445,7 @@
             ccZoom = val / 100;
             document.getElementById('cc-zoom-val').innerText = val + '%';
             ccCanvas.style.width = (val) + '%';
-            ccCanvas.style.maxWidth = 'none'; // Overwrite default UI constraints when zooming
+            ccCanvas.style.maxWidth = 'none';
         }
 
         function clearCustomCuts() {
@@ -405,13 +470,10 @@
             ccCanvas.width = ccImg.width;
             ccCanvas.height = ccImg.height;
             ccCtx.drawImage(ccImg, 0, 0);
-
-            // Draw Marks
             ccMarks.forEach((mark, index) => {
                 ccCtx.strokeStyle = "#ef4444";
                 ccCtx.lineWidth = Math.max(4, ccImg.width / 200);
-                ccCtx.setLineDash([]); // Solid lines for marks
-
+                ccCtx.setLineDash([]);
                 ccCtx.beginPath();
                 if (ccAxis === 'h') {
                     const py = mark * ccImg.height;
@@ -421,15 +483,10 @@
                     ccCtx.moveTo(px, 0); ccCtx.lineTo(px, ccImg.height);
                 }
                 ccCtx.stroke();
-                
-                // Add index number for clarity
                 ccCtx.fillStyle = "#ef4444";
                 ccCtx.font = `bold ${Math.max(20, ccImg.width/30)}px sans-serif`;
-                if (ccAxis === 'h') {
-                    ccCtx.fillText(index + 1, 10, (mark * ccImg.height) - 10);
-                } else {
-                    ccCtx.fillText(index + 1, (mark * ccImg.width) + 10, 30);
-                }
+                if (ccAxis === 'h') ccCtx.fillText(index + 1, 10, (mark * ccImg.height) - 10);
+                else ccCtx.fillText(index + 1, (mark * ccImg.width) + 10, 30);
             });
         }
 
@@ -437,33 +494,23 @@
             if (!ccImg) return;
             const zip = new JSZip();
             const marks = [0, ...ccMarks, 1];
-            
             for (let i = 0; i < marks.length - 1; i++) {
-                const start = marks[i];
-                const end = marks[i+1];
+                const start = marks[i], end = marks[i+1];
                 if (start === end) continue;
-
                 const temp = document.createElement('canvas');
                 const tCtx = temp.getContext('2d');
-
                 if (ccAxis === 'h') {
-                    const sy = start * ccImg.height;
-                    const sh = (end - start) * ccImg.height;
-                    temp.width = ccImg.width;
-                    temp.height = sh;
+                    const sy = start * ccImg.height, sh = (end - start) * ccImg.height;
+                    temp.width = ccImg.width; temp.height = sh;
                     tCtx.drawImage(ccImg, 0, sy, ccImg.width, sh, 0, 0, ccImg.width, sh);
                 } else {
-                    const sx = start * ccImg.width;
-                    const sw = (end - start) * ccImg.width;
-                    temp.width = sw;
-                    temp.height = ccImg.height;
+                    const sx = start * ccImg.width, sw = (end - start) * ccImg.width;
+                    temp.width = sw; temp.height = ccImg.height;
                     tCtx.drawImage(ccImg, sx, 0, sw, ccImg.height, 0, 0, sw, ccImg.height);
                 }
-                
                 const data = temp.toDataURL('image/png').split(',')[1];
                 zip.file(`${ccFileName}_part_${i + 1}.png`, data, { base64: true });
             }
-
             const content = await zip.generateAsync({ type: "blob" });
             downloadBlob(content, `${ccFileName}_custom_cuts.zip`);
         }
@@ -532,13 +579,10 @@
             const fillSquare = document.getElementById('merge-fill').checked;
             document.getElementById('fill-wrap').style.opacity = makeSquare ? '1' : '0.4';
 
-            const baseWidth = mergeImgs[0].width;
-            const baseHeight = mergeImgs[0].height;
-
             const processed = mergeImgs.map(img => {
                 let w = img.width, h = img.height;
                 if (normalize) {
-                    const ratio = (layout === 'horizontal') ? (baseHeight / h) : (baseWidth / w);
+                    const ratio = (layout === 'horizontal') ? (mergeImgs[0].height / h) : (mergeImgs[0].width / w);
                     w *= ratio; h *= ratio;
                 }
                 if (makeSquare) {
@@ -560,134 +604,115 @@
             }
 
             if (layout === 'horizontal') {
-                canvas.width = processed.reduce((sum, p) => sum + p.dw, 0);
-                canvas.height = Math.max(...processed.map(p => p.dh));
+                canvas.width = processed.reduce((sum, p) => sum + p.dw, 0); canvas.height = Math.max(...processed.map(p => p.dh));
                 let x = 0; processed.forEach(p => { drawItem(p, x, 0); x += p.dw; });
             } else if (layout === 'vertical') {
-                canvas.width = Math.max(...processed.map(p => p.dw));
-                canvas.height = processed.reduce((sum, p) => sum + p.dh, 0);
+                canvas.width = Math.max(...processed.map(p => p.dw)); canvas.height = processed.reduce((sum, p) => sum + p.dh, 0);
                 let y = 0; processed.forEach(p => { drawItem(p, 0, y); y += p.dh; });
             } else {
-                const cols = 2, rows = Math.ceil(processed.length / cols);
-                let cw = Math.max(...processed.map(p => p.dw)), ch = Math.max(...processed.map(p => p.dh));
-                canvas.width = cw * cols; canvas.height = ch * rows;
-                processed.forEach((p, i) => { drawItem(p, (i % cols) * cw, Math.floor(i / cols) * ch); });
+                const cols = 2, cw = Math.max(...processed.map(p => p.dw)), ch = Math.max(...processed.map(p => p.dh));
+                canvas.width = cw * cols; canvas.height = Math.ceil(processed.length / cols) * ch;
+                processed.forEach((p, i) => drawItem(p, (i % cols) * cw, Math.floor(i / cols) * ch));
             }
         }
 
-        // --- Tool: Resize ---
-        let resizeImgs = [];
-        function handleResizeUpload(input) {
+        // --- Tool: Compressor (NEW) ---
+        let compressImgs = [];
+        let compressFormat = 'jpg';
+
+        function handleCompressUpload(input) {
             readImages(input.files, imgs => {
-                resizeImgs = imgs;
-                document.getElementById('dl-resize-zip').style.display = 'block';
+                compressImgs = imgs;
+                document.getElementById('compress-empty').classList.add('hidden');
+                document.getElementById('compress-controls').classList.remove('hidden');
+                document.getElementById('dl-compress-zip').style.display = 'block';
+                processCompression();
             });
-        }
-        function toggleResizeInput() {
-            const mode = document.getElementById('resize-mode').value;
-            document.getElementById('resize-val-label').innerText = mode === 'percent' ? 'Value (%)' : mode + ' (px)';
-        }
-        function processResize() {
-            const mode = document.getElementById('resize-mode').value;
-            const val = parseFloat(document.getElementById('resize-val').value);
-            const gallery = document.getElementById('resize-gallery');
-            gallery.innerHTML = '';
-            resizeImgs.forEach((item, i) => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                let nw, nh;
-                if (mode === 'percent') { nw = item.img.width * (val / 100); nh = item.img.height * (val / 100); }
-                else if (mode === 'width') { nw = val; nh = item.img.height * (val / item.img.width); }
-                else { nh = val; nw = item.img.width * (val / item.img.height); }
-                canvas.width = nw; canvas.height = nh;
-                ctx.drawImage(item.img, 0, 0, nw, nh);
-                const wrap = document.createElement('div');
-                wrap.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:border-indigo-500';
-                wrap.innerHTML = `<p class="text-[8px] font-mono opacity-50 mb-1">${Math.round(nw)}x${Math.round(nh)}</p>`;
-                canvas.className = 'w-full h-auto rounded';
-                wrap.onclick = () => downloadCanvasElement(canvas, `resized_${item.name || i + '.png'}`);
-                wrap.appendChild(canvas); gallery.appendChild(wrap);
-                item.processedCanvas = canvas; // Keep for ZIP
-            });
-        }
-        async function downloadResizeZip() {
-            const zip = new JSZip();
-            resizeImgs.forEach((item, i) => {
-                if (item.processedCanvas) {
-                    const data = item.processedCanvas.toDataURL('image/png').split(',')[1];
-                    zip.file(`resized_${item.name || i + '.png'}`, data, { base64: true });
-                }
-            });
-            const content = await zip.generateAsync({ type: "blob" });
-            downloadBlob(content, "resized_images.zip");
         }
 
-        // --- Tool: Mass Crop ---
-        let cropItems = [];
-        function handleCropUpload(input) {
-            readImages(input.files, imgs => {
-                cropItems = imgs.map(item => ({ img: item.img, name: item.name, offsetX: 0, offsetY: 0, scale: 1.0 }));
-                document.getElementById('dl-all-crops-zip').style.display = 'block';
-                updateCropGrid();
-            });
+        function setCompressFormat(fmt) {
+            compressFormat = fmt;
+            ['cf-jpg', 'cf-png'].forEach(id => document.getElementById(id).classList.remove('bg-white', 'dark:bg-slate-700', 'shadow-sm'));
+            document.getElementById(`cf-${fmt}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            processCompression();
         }
-        function updateCropGrid() {
-            const grid = document.getElementById('crop-grid');
-            if (!grid) return;
-            const ratio = parseFloat(document.getElementById('crop-ratio').value);
-            grid.innerHTML = '';
-            cropItems.forEach((data, i) => {
-                const card = document.createElement('div');
-                card.className = 'bg-white dark:bg-slate-900 border dark:border-slate-800 p-3 rounded-xl space-y-3';
-                const win = document.createElement('div');
-                win.className = 'crop-window rounded-lg bg-black'; win.style.aspectRatio = ratio;
+
+        function processCompression() {
+            const gallery = document.getElementById('compress-gallery');
+            const qual = document.getElementById('comp-qual-range').value;
+            const scale = document.getElementById('comp-scale-range').value;
+            
+            document.getElementById('comp-qual-val').innerText = qual + '%';
+            document.getElementById('comp-scale-val').innerText = scale + '%';
+            
+            gallery.innerHTML = '';
+            
+            compressImgs.forEach((item, i) => {
                 const canvas = document.createElement('canvas');
-                canvas.id = `crop-canvas-${i}`; canvas.className = 'w-full h-full block';
-                win.appendChild(canvas);
-                const draw = () => {
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = 1200; canvas.height = 1200 / ratio;
-                    const ir = data.img.width / data.img.height, cr = canvas.width / canvas.height;
-                    let bw, bh;
-                    if (ir > cr) { bh = canvas.height; bw = bh * ir; } else { bw = canvas.width; bh = bw / ir; }
-                    const cw = bw * data.scale, ch = bh * data.scale;
-                    const mx = (cw - canvas.width) / 2, my = (ch - canvas.height) / 2;
-                    data.offsetX = Math.max(-mx, Math.min(mx, data.offsetX));
-                    data.offsetY = Math.max(-my, Math.min(my, data.offsetY));
-                    ctx.fillStyle = "#000"; ctx.fillRect(0,0, canvas.width, canvas.height);
-                    ctx.drawImage(data.img, (canvas.width - cw)/2 + data.offsetX, (canvas.height - ch)/2 + data.offsetY, cw, ch);
-                };
-                let isDragging = false, lx, ly;
-                const st = (x, y) => { isDragging = true; lx = x; ly = y; };
-                const mv = (x, y) => {
-                    if (!isDragging) return;
-                    const sf = canvas.width / win.getBoundingClientRect().width;
-                    data.offsetX += (x - lx) * sf; data.offsetY += (y - ly) * sf;
-                    lx = x; ly = y; draw();
-                };
-                win.onmousedown = e => st(e.clientX, e.clientY);
-                window.addEventListener('mousemove', e => mv(e.clientX, e.clientY));
-                window.addEventListener('mouseup', () => isDragging = false);
-                win.ontouchstart = e => st(e.touches[0].clientX, e.touches[0].clientY);
-                win.ontouchmove = e => { mv(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
-                const zoom = document.createElement('div');
-                zoom.innerHTML = `<input type="range" min="1" max="3" step="0.01" value="${data.scale}" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">`;
-                zoom.querySelector('input').oninput = e => { data.scale = parseFloat(e.target.value); draw(); };
-                card.appendChild(win); card.appendChild(zoom); grid.appendChild(card);
-                setTimeout(draw, 100);
+                const ctx = canvas.getContext('2d');
+                const s = scale / 100;
+                
+                canvas.width = item.img.width * s;
+                canvas.height = item.img.height * s;
+                ctx.drawImage(item.img, 0, 0, canvas.width, canvas.height);
+
+                // Compression magic:
+                // Step 1: Export as JPG at target quality (lossy compression happens here)
+                const jpgData = canvas.toDataURL('image/jpeg', qual / 100);
+                
+                let finalData = jpgData;
+                let finalMime = 'image/jpeg';
+
+                // Step 2: If PNG output requested, draw that lossy JPG back and export as PNG
+                if (compressFormat === 'png') {
+                    const tempImg = new Image();
+                    tempImg.src = jpgData;
+                    // This is synchronous in the sense we are storing the intent
+                    item.processedData = jpgData; 
+                    finalMime = 'image/png';
+                    finalData = canvas.toDataURL('image/png'); // Standard PNG compression (lossless but metadata stripped)
+                }
+                
+                item.processedData = finalData;
+                const binary = atob(finalData.split(',')[1]);
+                item.processedSize = binary.length;
+
+                const card = document.createElement('div');
+                card.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex flex-col gap-3';
+                
+                const savings = Math.max(0, ((item.size - item.processedSize) / item.size) * 100).toFixed(1);
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="text-[10px] font-mono leading-tight">
+                            <p class="font-bold text-slate-400">ORIGINAL</p>
+                            <p>${formatBytes(item.size)}</p>
+                        </div>
+                        <div class="text-[10px] font-mono leading-tight text-right">
+                            <p class="font-bold text-indigo-500">OPTIMIZED</p>
+                            <p>${formatBytes(item.processedSize)}</p>
+                        </div>
+                    </div>
+                    <div class="h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden">
+                        <img src="${finalData}" class="max-h-full max-w-full">
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded">-${savings}% Saved</span>
+                        <button onclick="downloadBlob(dataURLtoBlob('${finalData}'), 'compressed_${item.name.split('.')[0]}.${compressFormat}')" class="text-indigo-500 text-xs font-bold hover:underline">Download</button>
+                    </div>
+                `;
+                gallery.appendChild(card);
             });
         }
-        async function downloadAllCropsZip() {
+
+        async function downloadCompressZip() {
             const zip = new JSZip();
-            cropItems.forEach((item, i) => {
-                const c = document.getElementById(`crop-canvas-${i}`);
-                if (c) {
-                    const data = c.toDataURL('image/png').split(',')[1];
-                    zip.file(`crop_${item.name || i + '.png'}`, data, { base64: true });
-                }
+            compressImgs.forEach((item, i) => {
+                const data = item.processedData.split(',')[1];
+                zip.file(`compressed_${item.name.split('.')[0]}.${compressFormat}`, data, { base64: true });
             });
             const content = await zip.generateAsync({ type: "blob" });
-            downloadBlob(content, "cropped_images.zip");
+            downloadBlob(content, "compressed_images.zip");
         }
 
         // --- Global Utils ---
@@ -699,6 +724,78 @@
         function downloadBlob(blob, filename) {
             const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
             link.download = filename; link.click();
+        }
+        function dataURLtoBlob(dataurl) {
+            var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+                bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+            while(n--) u8arr[n] = bstr.charCodeAt(n);
+            return new Blob([u8arr], {type:mime});
+        }
+
+        // --- Tool: Resize (standard) ---
+        let resizeImgs = [];
+        function handleResizeUpload(input) { readImages(input.files, imgs => { resizeImgs = imgs; document.getElementById('dl-resize-zip').style.display = 'block'; }); }
+        function toggleResizeInput() {
+            const mode = document.getElementById('resize-mode').value;
+            document.getElementById('resize-val-label').innerText = mode === 'percent' ? 'Value (%)' : mode + ' (px)';
+        }
+        function processResize() {
+            const mode = document.getElementById('resize-mode').value, val = parseFloat(document.getElementById('resize-val').value), gallery = document.getElementById('resize-gallery');
+            gallery.innerHTML = '';
+            resizeImgs.forEach((item, i) => {
+                const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+                let nw, nh;
+                if (mode === 'percent') { nw = item.img.width * (val / 100); nh = item.img.height * (val / 100); }
+                else if (mode === 'width') { nw = val; nh = item.img.height * (val / item.img.width); }
+                else { nh = val; nw = item.img.width * (val / item.img.height); }
+                canvas.width = nw; canvas.height = nh; ctx.drawImage(item.img, 0, 0, nw, nh);
+                const wrap = document.createElement('div');
+                wrap.className = 'bg-white dark:bg-slate-900 border dark:border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:border-indigo-500';
+                wrap.innerHTML = `<p class="text-[8px] font-mono opacity-50 mb-1">${Math.round(nw)}x${Math.round(nh)}</p>`;
+                canvas.className = 'w-full h-auto rounded';
+                wrap.onclick = () => downloadCanvasElement(canvas, `resized_${item.name || i + '.png'}`);
+                wrap.appendChild(canvas); gallery.appendChild(wrap);
+                item.processedCanvas = canvas;
+            });
+        }
+        async function downloadResizeZip() {
+            const zip = new JSZip(); resizeImgs.forEach((item, i) => { if (item.processedCanvas) zip.file(`resized_${item.name || i + '.png'}`, item.processedCanvas.toDataURL('image/png').split(',')[1], { base64: true }); });
+            downloadBlob(await zip.generateAsync({ type: "blob" }), "resized_images.zip");
+        }
+
+        // --- Tool: Mass Crop ---
+        let cropItems = [];
+        function handleCropUpload(input) { readImages(input.files, imgs => { cropItems = imgs.map(item => ({ img: item.img, name: item.name, offsetX: 0, offsetY: 0, scale: 1.0 })); document.getElementById('dl-all-crops-zip').style.display = 'block'; updateCropGrid(); }); }
+        function updateCropGrid() {
+            const grid = document.getElementById('crop-grid'), ratio = parseFloat(document.getElementById('crop-ratio').value);
+            if (!grid) return; grid.innerHTML = '';
+            cropItems.forEach((data, i) => {
+                const card = document.createElement('div'); card.className = 'bg-white dark:bg-slate-900 border dark:border-slate-800 p-3 rounded-xl space-y-3';
+                const win = document.createElement('div'); win.className = 'crop-window rounded-lg bg-black'; win.style.aspectRatio = ratio;
+                const canvas = document.createElement('canvas'); canvas.id = `crop-canvas-${i}`; canvas.className = 'w-full h-full block';
+                win.appendChild(canvas);
+                const draw = () => {
+                    const ctx = canvas.getContext('2d'); canvas.width = 1200; canvas.height = 1200 / ratio;
+                    const ir = data.img.width / data.img.height, cr = canvas.width / canvas.height;
+                    let bw, bh; if (ir > cr) { bh = canvas.height; bw = bh * ir; } else { bw = canvas.width; bh = bw / ir; }
+                    const cw = bw * data.scale, ch = bh * data.scale;
+                    const mx = (cw - canvas.width) / 2, my = (ch - canvas.height) / 2;
+                    data.offsetX = Math.max(-mx, Math.min(mx, data.offsetX)); data.offsetY = Math.max(-my, Math.min(my, data.offsetY));
+                    ctx.fillStyle = "#000"; ctx.fillRect(0,0, canvas.width, canvas.height);
+                    ctx.drawImage(data.img, (canvas.width - cw)/2 + data.offsetX, (canvas.height - ch)/2 + data.offsetY, cw, ch);
+                };
+                let isDragging = false, lx, ly; const st = (x, y) => { isDragging = true; lx = x; ly = y; };
+                const mv = (x, y) => { if (!isDragging) return; const sf = canvas.width / win.getBoundingClientRect().width; data.offsetX += (x - lx) * sf; data.offsetY += (y - ly) * sf; lx = x; ly = y; draw(); };
+                win.onmousedown = e => st(e.clientX, e.clientY); window.addEventListener('mousemove', e => mv(e.clientX, e.clientY)); window.addEventListener('mouseup', () => isDragging = false);
+                win.ontouchstart = e => st(e.touches[0].clientX, e.touches[0].clientY); win.ontouchmove = e => { mv(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+                const zoom = document.createElement('div'); zoom.innerHTML = `<input type="range" min="1" max="3" step="0.01" value="${data.scale}" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">`;
+                zoom.querySelector('input').oninput = e => { data.scale = parseFloat(e.target.value); draw(); };
+                card.appendChild(win); card.appendChild(zoom); grid.appendChild(card); setTimeout(draw, 100);
+            });
+        }
+        async function downloadAllCropsZip() {
+            const zip = new JSZip(); cropItems.forEach((item, i) => { const c = document.getElementById(`crop-canvas-${i}`); if (c) zip.file(`crop_${item.name || i + '.png'}`, c.toDataURL('image/png').split(',')[1], { base64: true }); });
+            downloadBlob(await zip.generateAsync({ type: "blob" }), "cropped_images.zip");
         }
     </script>
 </body>
