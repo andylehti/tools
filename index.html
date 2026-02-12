@@ -112,7 +112,7 @@
         <section id="tool-custom-cut" class="tool-view hidden max-w-6xl mx-auto">
             <header class="mb-6">
                 <h2 class="text-2xl font-bold">Custom Cut</h2>
-                <p class="text-slate-500 text-sm">Click on the image to place cut lines, then download all pieces as a ZIP.</p>
+                <p class="text-slate-500 text-sm">Add both horizontal and vertical lines to extract a grid of images. Click the image to place lines.</p>
             </header>
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div class="lg:col-span-1 space-y-4">
@@ -123,8 +123,8 @@
                     <div id="custom-cut-controls" class="hidden space-y-4">
                         <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800">
                             <div class="flex justify-between items-center mb-2">
-                                <span class="text-[10px] font-black text-slate-400 uppercase">Cut Mode</span>
-                                <span id="cc-mark-count" class="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">0 Marks</span>
+                                <span class="text-[10px] font-black text-slate-400 uppercase">Placement Axis</span>
+                                <span id="cc-mark-count" class="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">0 Lines</span>
                             </div>
                             <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
                                 <button onclick="setCustomCutAxis('h')" id="cc-h" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Horizontal</button>
@@ -134,7 +134,7 @@
                             <div class="mt-4 space-y-3">
                                 <label class="flex items-center gap-2 text-xs font-medium cursor-pointer">
                                     <input type="checkbox" id="cc-fit-width" onchange="toggleCustomCutScroll()" class="rounded text-indigo-600">
-                                    <span>Scroll Long Image (Fit Width)</span>
+                                    <span>Scroll Mode (Fit Width)</span>
                                 </label>
                                 
                                 <div>
@@ -147,7 +147,7 @@
                             </div>
                         </div>
                         <button onclick="clearCustomCuts()" class="w-full py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700">Clear All Marks</button>
-                        <button onclick="downloadCustomCutsZip()" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">Cut & Download ZIP</button>
+                        <button onclick="downloadCustomCutsZip()" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">Extract Grid (.ZIP)</button>
                     </div>
                 </div>
                 <div class="lg:col-span-3">
@@ -250,7 +250,7 @@
             <div id="crop-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </section>
 
-        <!-- PHOTO COMPRESSOR (NEW) -->
+        <!-- PHOTO COMPRESSOR -->
         <section id="tool-compress" class="tool-view hidden max-w-6xl mx-auto">
             <header class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
@@ -401,11 +401,12 @@
             if (singleSplitImg) renderSplitToCanvas(document.getElementById('split-canvas'), singleSplitImg, singleSplitCfg);
         }
 
-        // --- Tool: Custom Cut ---
+        // --- Tool: Custom Cut (UPDATED for GRID) ---
         let ccImg = null;
         let ccFileName = "";
         let ccAxis = 'h';
-        let ccMarks = [];
+        let ccMarksH = [];
+        let ccMarksV = [];
         let ccZoom = 1.0;
         const ccCanvas = document.getElementById('custom-cut-canvas');
         const ccCtx = ccCanvas.getContext('2d');
@@ -416,11 +417,12 @@
             ccFileName = input.files[0].name.split('.')[0];
             readImages([input.files[0]], imgs => {
                 ccImg = imgs[0].img;
-                ccMarks = [];
+                ccMarksH = [];
+                ccMarksV = [];
                 ccZoom = 1.0;
                 document.getElementById('cc-zoom-range').value = 100;
                 document.getElementById('cc-zoom-val').innerText = '100%';
-                document.getElementById('cc-mark-count').innerText = '0 Marks';
+                updateCCMarkCountDisplay();
                 document.getElementById('custom-cut-empty').classList.add('hidden');
                 document.getElementById('custom-cut-controls').classList.remove('hidden');
                 drawCustomCut();
@@ -449,9 +451,15 @@
         }
 
         function clearCustomCuts() {
-            ccMarks = [];
-            document.getElementById('cc-mark-count').innerText = '0 Marks';
+            ccMarksH = [];
+            ccMarksV = [];
+            updateCCMarkCountDisplay();
             drawCustomCut();
+        }
+
+        function updateCCMarkCountDisplay() {
+            const total = ccMarksH.length + ccMarksV.length;
+            document.getElementById('cc-mark-count').innerText = `${total} Line${total !== 1 ? 's' : ''}`;
         }
 
         ccCanvas.addEventListener('click', (e) => {
@@ -459,9 +467,14 @@
             const rect = ccCanvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) / rect.width;
             const y = (e.clientY - rect.top) / rect.height;
-            ccMarks.push(ccAxis === 'h' ? y : x);
-            ccMarks.sort((a, b) => a - b);
-            document.getElementById('cc-mark-count').innerText = `${ccMarks.length} Mark${ccMarks.length !== 1 ? 's' : ''}`;
+            if (ccAxis === 'h') {
+                ccMarksH.push(y);
+                ccMarksH.sort((a, b) => a - b);
+            } else {
+                ccMarksV.push(x);
+                ccMarksV.sort((a, b) => a - b);
+            }
+            updateCCMarkCountDisplay();
             drawCustomCut();
         });
 
@@ -470,49 +483,68 @@
             ccCanvas.width = ccImg.width;
             ccCanvas.height = ccImg.height;
             ccCtx.drawImage(ccImg, 0, 0);
-            ccMarks.forEach((mark, index) => {
-                ccCtx.strokeStyle = "#ef4444";
-                ccCtx.lineWidth = Math.max(4, ccImg.width / 200);
-                ccCtx.setLineDash([]);
+
+            ccCtx.strokeStyle = "#ef4444";
+            ccCtx.lineWidth = Math.max(4, ccImg.width / 200);
+            ccCtx.setLineDash([]);
+            
+            // Draw H lines
+            ccMarksH.forEach((mark, index) => {
+                const py = mark * ccImg.height;
                 ccCtx.beginPath();
-                if (ccAxis === 'h') {
-                    const py = mark * ccImg.height;
-                    ccCtx.moveTo(0, py); ccCtx.lineTo(ccImg.width, py);
-                } else {
-                    const px = mark * ccImg.width;
-                    ccCtx.moveTo(px, 0); ccCtx.lineTo(px, ccImg.height);
-                }
+                ccCtx.moveTo(0, py); ccCtx.lineTo(ccImg.width, py);
                 ccCtx.stroke();
                 ccCtx.fillStyle = "#ef4444";
-                ccCtx.font = `bold ${Math.max(20, ccImg.width/30)}px sans-serif`;
-                if (ccAxis === 'h') ccCtx.fillText(index + 1, 10, (mark * ccImg.height) - 10);
-                else ccCtx.fillText(index + 1, (mark * ccImg.width) + 10, 30);
+                ccCtx.font = `bold ${Math.max(20, ccImg.width/40)}px sans-serif`;
+                ccCtx.fillText(`H${index + 1}`, 10, py - 10);
+            });
+
+            // Draw V lines
+            ccMarksV.forEach((mark, index) => {
+                const px = mark * ccImg.width;
+                ccCtx.beginPath();
+                ccCtx.moveTo(px, 0); ccCtx.lineTo(px, ccImg.height);
+                ccCtx.stroke();
+                ccCtx.fillStyle = "#ef4444";
+                ccCtx.font = `bold ${Math.max(20, ccImg.width/40)}px sans-serif`;
+                ccCtx.fillText(`V${index + 1}`, px + 10, 30);
             });
         }
 
         async function downloadCustomCutsZip() {
             if (!ccImg) return;
             const zip = new JSZip();
-            const marks = [0, ...ccMarks, 1];
-            for (let i = 0; i < marks.length - 1; i++) {
-                const start = marks[i], end = marks[i+1];
-                if (start === end) continue;
-                const temp = document.createElement('canvas');
-                const tCtx = temp.getContext('2d');
-                if (ccAxis === 'h') {
-                    const sy = start * ccImg.height, sh = (end - start) * ccImg.height;
-                    temp.width = ccImg.width; temp.height = sh;
-                    tCtx.drawImage(ccImg, 0, sy, ccImg.width, sh, 0, 0, ccImg.width, sh);
-                } else {
-                    const sx = start * ccImg.width, sw = (end - start) * ccImg.width;
-                    temp.width = sw; temp.height = ccImg.height;
-                    tCtx.drawImage(ccImg, sx, 0, sw, ccImg.height, 0, 0, sw, ccImg.height);
+            const hMarks = [0, ...ccMarksH, 1];
+            const vMarks = [0, ...ccMarksV, 1];
+            
+            // Iterate over the grid defined by horizontal and vertical lines
+            for (let r = 0; r < hMarks.length - 1; r++) {
+                for (let c = 0; c < vMarks.length - 1; c++) {
+                    const startY = hMarks[r], endY = hMarks[r+1];
+                    const startX = vMarks[c], endX = vMarks[c+1];
+                    
+                    if (startY === endY || startX === endX) continue;
+
+                    const temp = document.createElement('canvas');
+                    const tCtx = temp.getContext('2d');
+
+                    const sx = startX * ccImg.width;
+                    const sy = startY * ccImg.height;
+                    const sw = (endX - startX) * ccImg.width;
+                    const sh = (endY - startY) * ccImg.height;
+
+                    temp.width = sw;
+                    temp.height = sh;
+                    tCtx.drawImage(ccImg, sx, sy, sw, sh, 0, 0, sw, sh);
+                    
+                    const data = temp.toDataURL('image/png').split(',')[1];
+                    // Name files by row and column
+                    zip.file(`${ccFileName}_R${r+1}_C${c+1}.png`, data, { base64: true });
                 }
-                const data = temp.toDataURL('image/png').split(',')[1];
-                zip.file(`${ccFileName}_part_${i + 1}.png`, data, { base64: true });
             }
+
             const content = await zip.generateAsync({ type: "blob" });
-            downloadBlob(content, `${ccFileName}_custom_cuts.zip`);
+            downloadBlob(content, `${ccFileName}_grid_extract.zip`);
         }
 
         // --- Tool: Bulk Split ---
@@ -616,7 +648,7 @@
             }
         }
 
-        // --- Tool: Compressor (NEW) ---
+        // --- Tool: Compressor ---
         let compressImgs = [];
         let compressFormat = 'jpg';
 
@@ -641,65 +673,36 @@
             const gallery = document.getElementById('compress-gallery');
             const qual = document.getElementById('comp-qual-range').value;
             const scale = document.getElementById('comp-scale-range').value;
-            
             document.getElementById('comp-qual-val').innerText = qual + '%';
             document.getElementById('comp-scale-val').innerText = scale + '%';
-            
             gallery.innerHTML = '';
-            
             compressImgs.forEach((item, i) => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 const s = scale / 100;
-                
                 canvas.width = item.img.width * s;
                 canvas.height = item.img.height * s;
                 ctx.drawImage(item.img, 0, 0, canvas.width, canvas.height);
-
-                // Compression magic:
-                // Step 1: Export as JPG at target quality (lossy compression happens here)
                 const jpgData = canvas.toDataURL('image/jpeg', qual / 100);
-                
                 let finalData = jpgData;
-                let finalMime = 'image/jpeg';
-
-                // Step 2: If PNG output requested, draw that lossy JPG back and export as PNG
                 if (compressFormat === 'png') {
                     const tempImg = new Image();
                     tempImg.src = jpgData;
-                    // This is synchronous in the sense we are storing the intent
-                    item.processedData = jpgData; 
-                    finalMime = 'image/png';
-                    finalData = canvas.toDataURL('image/png'); // Standard PNG compression (lossless but metadata stripped)
+                    finalData = canvas.toDataURL('image/png');
                 }
-                
                 item.processedData = finalData;
                 const binary = atob(finalData.split(',')[1]);
                 item.processedSize = binary.length;
-
                 const card = document.createElement('div');
                 card.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex flex-col gap-3';
-                
                 const savings = Math.max(0, ((item.size - item.processedSize) / item.size) * 100).toFixed(1);
-                
                 card.innerHTML = `
                     <div class="flex justify-between items-start">
-                        <div class="text-[10px] font-mono leading-tight">
-                            <p class="font-bold text-slate-400">ORIGINAL</p>
-                            <p>${formatBytes(item.size)}</p>
-                        </div>
-                        <div class="text-[10px] font-mono leading-tight text-right">
-                            <p class="font-bold text-indigo-500">OPTIMIZED</p>
-                            <p>${formatBytes(item.processedSize)}</p>
-                        </div>
+                        <div class="text-[10px] font-mono leading-tight"><p class="font-bold text-slate-400">ORIGINAL</p><p>${formatBytes(item.size)}</p></div>
+                        <div class="text-[10px] font-mono leading-tight text-right"><p class="font-bold text-indigo-500">OPTIMIZED</p><p>${formatBytes(item.processedSize)}</p></div>
                     </div>
-                    <div class="h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden">
-                        <img src="${finalData}" class="max-h-full max-w-full">
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded">-${savings}% Saved</span>
-                        <button onclick="downloadBlob(dataURLtoBlob('${finalData}'), 'compressed_${item.name.split('.')[0]}.${compressFormat}')" class="text-indigo-500 text-xs font-bold hover:underline">Download</button>
-                    </div>
+                    <div class="h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden"><img src="${finalData}" class="max-h-full max-w-full"></div>
+                    <div class="flex justify-between items-center"><span class="text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded">-${savings}% Saved</span><button onclick="downloadBlob(dataURLtoBlob('${finalData}'), 'compressed_${item.name.split('.')[0]}.${compressFormat}')" class="text-indigo-500 text-xs font-bold hover:underline">Download</button></div>
                 `;
                 gallery.appendChild(card);
             });
@@ -707,12 +710,8 @@
 
         async function downloadCompressZip() {
             const zip = new JSZip();
-            compressImgs.forEach((item, i) => {
-                const data = item.processedData.split(',')[1];
-                zip.file(`compressed_${item.name.split('.')[0]}.${compressFormat}`, data, { base64: true });
-            });
-            const content = await zip.generateAsync({ type: "blob" });
-            downloadBlob(content, "compressed_images.zip");
+            compressImgs.forEach((item, i) => { zip.file(`compressed_${item.name.split('.')[0]}.${compressFormat}`, item.processedData.split(',')[1], { base64: true }); });
+            downloadBlob(await zip.generateAsync({ type: "blob" }), "compressed_images.zip");
         }
 
         // --- Global Utils ---
@@ -726,8 +725,7 @@
             link.download = filename; link.click();
         }
         function dataURLtoBlob(dataurl) {
-            var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
-                bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+            var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
             while(n--) u8arr[n] = bstr.charCodeAt(n);
             return new Blob([u8arr], {type:mime});
         }
