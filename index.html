@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Utility Suite Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- JSZip for bundled downloads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { DEFAULT: '#6366f1', hover: '#4f46e5' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { transition: background-color 0.3s, color 0.3s; }
+        .canvas-container { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .crop-window { position: relative; overflow: hidden; cursor: grab; user-select: none; touch-action: none; }
+        .crop-window:active { cursor: grabbing; }
+        .custom-cut-canvas { cursor: crosshair; }
+        
+        /* Custom scroll mode for long images */
+        .scroll-mode-enabled {
+            overflow-y: auto !important;
+            max-height: 80vh !important;
+            display: block !important;
+        }
+        .scroll-mode-enabled canvas {
+            max-height: none !important;
+            width: 100% !important;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::webkit-scrollbar-thumb { background: #475569; }
+        @media (max-width: 768px) {
+            .mobile-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+            .mobile-nav-scroll::-webkit-scrollbar { display: none; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <!-- Sidebar -->
+    <aside class="w-full md:w-64 bg-white dark:bg-slate-900 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-4 md:p-6 flex flex-col gap-6 z-20">
+        <div class="flex items-center justify-between md:block">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span class="hidden md:inline">ImageSuite</span>
+            </h1>
+            <button onclick="toggleDarkMode()" class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                <svg id="sun-icon" class="h-5 w-5 hidden dark:block text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+                <svg id="moon-icon" class="h-5 w-5 block dark:hidden text-slate-600" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+            </button>
+        </div>
+        <nav class="flex md:flex-col gap-1 overflow-x-auto mobile-nav-scroll pb-2 md:pb-0">
+            <button onclick="switchTool('split')" id="nav-split" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition active-btn bg-indigo-600 text-white">Split & Stitch</button>
+            <button onclick="switchTool('custom-cut')" id="nav-custom-cut" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Custom Cut</button>
+            <button onclick="switchTool('bulk-split')" id="nav-bulk-split" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Bulk Split</button>
+            <button onclick="switchTool('merge')" id="nav-merge" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Merge</button>
+            <button onclick="switchTool('resize')" id="nav-resize" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Bulk Resize</button>
+            <button onclick="switchTool('crop')" id="nav-crop" class="whitespace-nowrap flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition">Mass Crop</button>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-4 md:p-10 overflow-y-auto">
+        <!-- SINGLE SPLIT & STITCH -->
+        <section id="tool-split" class="tool-view block max-w-5xl mx-auto">
+            <header class="mb-6"><h2 class="text-2xl font-bold">Split & Stitch</h2><p class="text-slate-500 text-sm">Cut an image and rearrange the halves.</p></header>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="space-y-4">
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <label class="block text-sm font-bold mb-2">Upload Photo</label>
+                        <input type="file" onchange="handleSplitUpload(this)" class="w-full text-xs text-slate-500" accept="image/*">
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                        <div class="flex flex-col gap-4">
+                            <div><span class="text-[10px] font-black text-slate-400 uppercase">Cut Axis</span><div class="flex mt-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                                <button onclick="updateSplitCfg('cut','horizontal')" id="sc-h" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Horiz</button>
+                                <button onclick="updateSplitCfg('cut','vertical')" id="sc-v" class="flex-1 py-1 text-xs rounded">Vert</button>
+                            </div></div>
+                            <div><span class="text-[10px] font-black text-slate-400 uppercase">Stitch Axis</span><div class="flex mt-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                                <button onclick="updateSplitCfg('stitch','horizontal')" id="ss-h" class="flex-1 py-1 text-xs rounded">Horiz</button>
+                                <button onclick="updateSplitCfg('stitch','vertical')" id="ss-v" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Vert</button>
+                            </div></div>
+                        </div>
+                        <button onclick="updateSplitCfg('swap')" class="w-full py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-sm font-bold">Swap Pieces</button>
+                    </div>
+                    <button id="dl-split" style="display:none" onclick="downloadCanvas('split-canvas')" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">Download Result</button>
+                </div>
+                <div class="lg:col-span-2">
+                    <div class="canvas-container bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center min-h-[300px] border border-slate-200 dark:border-slate-800">
+                        <canvas id="split-canvas" class="max-w-full max-h-[60vh]"></canvas>
+                        <p id="split-empty" class="text-slate-400 italic">No image loaded</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CUSTOM CUT -->
+        <section id="tool-custom-cut" class="tool-view hidden max-w-6xl mx-auto">
+            <header class="mb-6">
+                <h2 class="text-2xl font-bold">Custom Cut</h2>
+                <p class="text-slate-500 text-sm">Click on the image to place cut lines, then download all pieces as a ZIP.</p>
+            </header>
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800">
+                        <label class="block text-sm font-bold mb-2">Upload Photo</label>
+                        <input type="file" onchange="handleCustomCutUpload(this)" class="w-full text-xs text-slate-500" accept="image/*">
+                    </div>
+                    <div id="custom-cut-controls" class="hidden space-y-4">
+                        <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-[10px] font-black text-slate-400 uppercase">Cut Mode</span>
+                                <span id="cc-mark-count" class="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">0 Marks</span>
+                            </div>
+                            <div class="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                                <button onclick="setCustomCutAxis('h')" id="cc-h" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Horizontal</button>
+                                <button onclick="setCustomCutAxis('v')" id="cc-v" class="flex-1 py-1 text-xs rounded">Vertical</button>
+                            </div>
+                            
+                            <div class="mt-4 space-y-3">
+                                <label class="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                                    <input type="checkbox" id="cc-fit-width" onchange="toggleCustomCutScroll()" class="rounded text-indigo-600">
+                                    <span>Scroll Long Image (Fit Width)</span>
+                                </label>
+                                
+                                <div>
+                                    <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-1">
+                                        <span>UI Zoom</span>
+                                        <span id="cc-zoom-val">100%</span>
+                                    </div>
+                                    <input type="range" id="cc-zoom-range" min="50" max="300" value="100" oninput="updateCustomCutZoom()" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="clearCustomCuts()" class="w-full py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700">Clear All Marks</button>
+                        <button onclick="downloadCustomCutsZip()" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">Cut & Download ZIP</button>
+                    </div>
+                </div>
+                <div class="lg:col-span-3">
+                    <div id="cc-canvas-container" class="canvas-container bg-slate-100 dark:bg-slate-900 rounded-xl relative flex items-center justify-center border dark:border-slate-800 min-h-[400px]">
+                        <canvas id="custom-cut-canvas" class="custom-cut-canvas max-w-full max-h-[75vh]"></canvas>
+                        <p id="custom-cut-empty" class="text-slate-400 italic">Upload an image to start cutting</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- BULK SPLIT & STITCH -->
+        <section id="tool-bulk-split" class="tool-view hidden max-w-6xl mx-auto">
+            <header class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div><h2 class="text-2xl font-bold">Bulk Split & Stitch</h2><p class="text-slate-500 text-sm">Process multiple images with the same split logic.</p></div>
+                <button onclick="downloadBulkSplitZip()" id="dl-bulk-split-zip" style="display:none" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">Download All (.ZIP)</button>
+            </header>
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <label class="block text-sm font-bold mb-2">Upload Folder/Images</label>
+                        <input type="file" multiple onchange="handleBulkSplitUpload(this)" class="w-full text-xs text-slate-500" accept="image/*">
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                        <div><span class="text-[10px] font-black text-slate-400 uppercase">Cut</span>
+                        <div class="flex mt-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                            <button onclick="updateBulkSplitCfg('cut','horizontal')" id="bsc-h" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Horiz</button>
+                            <button onclick="updateBulkSplitCfg('cut','vertical')" id="bsc-v" class="flex-1 py-1 text-xs rounded">Vert</button>
+                        </div></div>
+                        <div><span class="text-[10px] font-black text-slate-400 uppercase">Stitch</span>
+                        <div class="flex mt-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                            <button onclick="updateBulkSplitCfg('stitch','horizontal')" id="bss-h" class="flex-1 py-1 text-xs rounded">Horiz</button>
+                            <button onclick="updateBulkSplitCfg('stitch','vertical')" id="bss-v" class="flex-1 py-1 text-xs rounded bg-white dark:bg-slate-700 shadow-sm">Vert</button>
+                        </div></div>
+                        <button onclick="updateBulkSplitCfg('swap')" class="w-full py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-sm font-bold">Swap Pieces</button>
+                    </div>
+                </div>
+                <div class="lg:col-span-3">
+                    <div id="bulk-split-gallery" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
+                    <p id="bulk-split-empty" class="text-center py-20 text-slate-400 italic">No images uploaded</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- IMAGE MERGE -->
+        <section id="tool-merge" class="tool-view hidden max-w-5xl mx-auto">
+            <header class="mb-6"><h2 class="text-2xl font-bold">Image Merge</h2><p class="text-slate-500 text-sm">Combine images into rows, columns, or grids.</p></header>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="space-y-4">
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <label class="block text-sm font-bold mb-2">Select Images</label>
+                        <input type="file" multiple onchange="handleMergeUpload(this)" class="w-full text-xs text-slate-500" accept="image/*">
+                    </div>
+                    <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <select id="merge-layout" onchange="processMerge()" class="w-full p-2 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg text-sm">
+                            <option value="horizontal">Horizontal Row</option>
+                            <option value="vertical">Vertical Column</option>
+                            <option value="grid">2-Column Grid</option>
+                        </select>
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-3 text-sm cursor-pointer"><input type="checkbox" id="merge-normalize" onchange="processMerge()" checked class="rounded text-indigo-600"> Normalize Sizes</label>
+                            <label class="flex items-center gap-3 text-sm cursor-pointer"><input type="checkbox" id="merge-square" onchange="processMerge()" class="rounded text-indigo-600"> Make all square</label>
+                            <label class="flex items-center gap-3 text-sm cursor-pointer pl-6" id="fill-wrap"><input type="checkbox" id="merge-fill" onchange="processMerge()" class="rounded text-indigo-600"> Fill Square (Crop)</label>
+                        </div>
+                    </div>
+                    <button id="dl-merge" style="display:none" onclick="downloadCanvas('merge-canvas')" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold">Download Combined</button>
+                </div>
+                <div class="lg:col-span-2"><div class="canvas-container bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center min-h-[300px] border dark:border-slate-800"><canvas id="merge-canvas" class="max-w-full max-h-[60vh]"></canvas></div></div>
+            </div>
+        </section>
+
+        <!-- BULK RESIZE -->
+        <section id="tool-resize" class="tool-view hidden max-w-6xl mx-auto">
+            <header class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div><h2 class="text-2xl font-bold">Bulk Resize</h2><p class="text-slate-500 text-sm">Batch resize images and download individual or ZIP.</p></div>
+                <button onclick="downloadResizeZip()" id="dl-resize-zip" style="display:none" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">Download All (.ZIP)</button>
+            </header>
+            <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl border border-slate-200 dark:border-slate-800 mb-6 flex flex-col md:flex-row gap-6 items-end">
+                <div class="flex-1 w-full"><label class="block text-sm font-bold mb-2">Upload Images</label><input type="file" multiple onchange="handleResizeUpload(this)" class="w-full text-xs text-slate-500" accept="image/*"></div>
+                <div class="w-full md:w-48"><label class="block text-sm font-bold mb-2">Mode</label><select id="resize-mode" class="w-full p-2 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg text-sm" onchange="toggleResizeInput()">
+                    <option value="percent">Percentage (%)</option><option value="width">Width (px)</option><option value="height">Height (px)</option></select></div>
+                <div class="w-full md:w-32"><label id="resize-val-label" class="block text-sm font-bold mb-2">Value</label><input type="number" id="resize-val" value="50" class="w-full p-2 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg text-sm"></div>
+                <button onclick="processResize()" class="w-full md:w-auto px-8 py-2 bg-indigo-600 text-white rounded-lg font-bold">Process All</button>
+            </div>
+            <div id="resize-gallery" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4"></div>
+        </section>
+
+        <!-- MASS CROP -->
+        <section id="tool-crop" class="tool-view hidden max-w-6xl mx-auto">
+            <header class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div><h2 class="text-2xl font-bold">Mass Crop</h2><p class="text-slate-500 text-sm">Pan, zoom, and ZIP download.</p></div>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <select id="crop-ratio" onchange="updateCropGrid()" class="flex-1 sm:flex-none p-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg text-sm">
+                        <option value="1">1:1 Square</option><option value="0.8">4:5 Portrait</option><option value="1.77">16:9 Cinema</option><option value="1.33">4:3 Standard</option><option value="0.5625">9:16 Reel</option>
+                    </select>
+                    <button onclick="downloadAllCropsZip()" id="dl-all-crops-zip" style="display:none" class="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">Download ZIP</button>
+                </div>
+            </header>
+            <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border dark:border-slate-800 mb-6"><input type="file" multiple onchange="handleCropUpload(this)" class="w-full text-xs" accept="image/*"></div>
+            <div id="crop-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </section>
+    </main>
+
+    <script>
+        // --- Core Helpers ---
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        }
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+
+        function switchTool(toolId) {
+            document.querySelectorAll('.tool-view').forEach(v => v.classList.add('hidden'));
+            document.getElementById(`tool-${toolId}`).classList.remove('hidden');
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('bg-indigo-600', 'text-white', 'active-btn'));
+            document.getElementById(`nav-${toolId}`).classList.add('bg-indigo-600', 'text-white', 'active-btn');
+            if (toolId === 'crop') updateCropGrid();
+        }
+
+        function readImages(files, callback) {
+            let loaded = 0; const imgs = [];
+            const fileList = Array.from(files);
+            if (fileList.length === 0) return;
+            fileList.forEach((file, i) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        imgs[i] = { img, name: file.name }; loaded++;
+                        if (loaded === fileList.length) callback(imgs);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // --- Split Logic Module ---
+        function renderSplitToCanvas(canvas, img, cfg) {
+            const ctx = canvas.getContext('2d');
+            const w = img.width, h = img.height;
+            let p1, p2;
+            if (cfg.cut === 'horizontal') {
+                const mid = h / 2;
+                p1 = { sx: 0, sy: 0, sw: w, sh: mid };
+                p2 = { sx: 0, sy: mid, sw: w, sh: h - mid };
+            } else {
+                const mid = w / 2;
+                p1 = { sx: 0, sy: 0, sw: mid, sh: h };
+                p2 = { sx: mid, sy: 0, sw: w - mid, sh: h };
+            }
+            const f = cfg.swapped ? p2 : p1;
+            const s = cfg.swapped ? p1 : p2;
+            if (cfg.stitch === 'horizontal') {
+                canvas.width = f.sw + s.sw; canvas.height = Math.max(f.sh, s.sh);
+                ctx.drawImage(img, f.sx, f.sy, f.sw, f.sh, 0, 0, f.sw, f.sh);
+                ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, f.sw, 0, s.sw, s.sh);
+            } else {
+                canvas.width = Math.max(f.sw, s.sw); canvas.height = f.sh + s.sh;
+                ctx.drawImage(img, f.sx, f.sy, f.sw, f.sh, 0, 0, f.sw, f.sh);
+                ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, 0, f.sh, s.sw, s.sh);
+            }
+        }
+
+        // --- Tool: Single Split ---
+        let singleSplitImg = null;
+        let singleSplitCfg = { cut: 'horizontal', stitch: 'vertical', swapped: false };
+        function handleSplitUpload(input) {
+            readImages(input.files, imgs => {
+                singleSplitImg = imgs[0].img;
+                document.getElementById('split-empty').classList.add('hidden');
+                document.getElementById('dl-split').style.display = 'block';
+                processSplit();
+            });
+        }
+        function updateSplitCfg(key, val) {
+            if (key === 'swap') singleSplitCfg.swapped = !singleSplitCfg.swapped;
+            else singleSplitCfg[key] = val;
+            ['sc-h', 'sc-v', 'ss-h', 'ss-v'].forEach(id => document.getElementById(id).classList.remove('bg-white', 'dark:bg-slate-700', 'shadow-sm'));
+            document.getElementById(`sc-${singleSplitCfg.cut[0]}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            document.getElementById(`ss-${singleSplitCfg.stitch[0]}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            processSplit();
+        }
+        function processSplit() {
+            if (singleSplitImg) renderSplitToCanvas(document.getElementById('split-canvas'), singleSplitImg, singleSplitCfg);
+        }
+
+        // --- Tool: Custom Cut (UPDATED) ---
+        let ccImg = null;
+        let ccFileName = "";
+        let ccAxis = 'h';
+        let ccMarks = [];
+        let ccZoom = 1.0;
+        const ccCanvas = document.getElementById('custom-cut-canvas');
+        const ccCtx = ccCanvas.getContext('2d');
+        const ccContainer = document.getElementById('cc-canvas-container');
+
+        function handleCustomCutUpload(input) {
+            if (!input.files[0]) return;
+            ccFileName = input.files[0].name.split('.')[0];
+            readImages([input.files[0]], imgs => {
+                ccImg = imgs[0].img;
+                ccMarks = [];
+                ccZoom = 1.0;
+                document.getElementById('cc-zoom-range').value = 100;
+                document.getElementById('cc-zoom-val').innerText = '100%';
+                document.getElementById('cc-mark-count').innerText = '0 Marks';
+                document.getElementById('custom-cut-empty').classList.add('hidden');
+                document.getElementById('custom-cut-controls').classList.remove('hidden');
+                drawCustomCut();
+            });
+        }
+
+        function setCustomCutAxis(axis) {
+            ccAxis = axis;
+            ['cc-h', 'cc-v'].forEach(id => document.getElementById(id).classList.remove('bg-white', 'dark:bg-slate-700', 'shadow-sm'));
+            document.getElementById(`cc-${axis}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            drawCustomCut();
+        }
+
+        function toggleCustomCutScroll() {
+            const enabled = document.getElementById('cc-fit-width').checked;
+            if (enabled) ccContainer.classList.add('scroll-mode-enabled');
+            else ccContainer.classList.remove('scroll-mode-enabled');
+        }
+
+        function updateCustomCutZoom() {
+            const val = document.getElementById('cc-zoom-range').value;
+            ccZoom = val / 100;
+            document.getElementById('cc-zoom-val').innerText = val + '%';
+            ccCanvas.style.width = (val) + '%';
+            ccCanvas.style.maxWidth = 'none'; // Overwrite default UI constraints when zooming
+        }
+
+        function clearCustomCuts() {
+            ccMarks = [];
+            document.getElementById('cc-mark-count').innerText = '0 Marks';
+            drawCustomCut();
+        }
+
+        ccCanvas.addEventListener('click', (e) => {
+            if (!ccImg) return;
+            const rect = ccCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            ccMarks.push(ccAxis === 'h' ? y : x);
+            ccMarks.sort((a, b) => a - b);
+            document.getElementById('cc-mark-count').innerText = `${ccMarks.length} Mark${ccMarks.length !== 1 ? 's' : ''}`;
+            drawCustomCut();
+        });
+
+        function drawCustomCut() {
+            if (!ccImg) return;
+            ccCanvas.width = ccImg.width;
+            ccCanvas.height = ccImg.height;
+            ccCtx.drawImage(ccImg, 0, 0);
+
+            // Draw Marks
+            ccMarks.forEach((mark, index) => {
+                ccCtx.strokeStyle = "#ef4444";
+                ccCtx.lineWidth = Math.max(4, ccImg.width / 200);
+                ccCtx.setLineDash([]); // Solid lines for marks
+
+                ccCtx.beginPath();
+                if (ccAxis === 'h') {
+                    const py = mark * ccImg.height;
+                    ccCtx.moveTo(0, py); ccCtx.lineTo(ccImg.width, py);
+                } else {
+                    const px = mark * ccImg.width;
+                    ccCtx.moveTo(px, 0); ccCtx.lineTo(px, ccImg.height);
+                }
+                ccCtx.stroke();
+                
+                // Add index number for clarity
+                ccCtx.fillStyle = "#ef4444";
+                ccCtx.font = `bold ${Math.max(20, ccImg.width/30)}px sans-serif`;
+                if (ccAxis === 'h') {
+                    ccCtx.fillText(index + 1, 10, (mark * ccImg.height) - 10);
+                } else {
+                    ccCtx.fillText(index + 1, (mark * ccImg.width) + 10, 30);
+                }
+            });
+        }
+
+        async function downloadCustomCutsZip() {
+            if (!ccImg) return;
+            const zip = new JSZip();
+            const marks = [0, ...ccMarks, 1];
+            
+            for (let i = 0; i < marks.length - 1; i++) {
+                const start = marks[i];
+                const end = marks[i+1];
+                if (start === end) continue;
+
+                const temp = document.createElement('canvas');
+                const tCtx = temp.getContext('2d');
+
+                if (ccAxis === 'h') {
+                    const sy = start * ccImg.height;
+                    const sh = (end - start) * ccImg.height;
+                    temp.width = ccImg.width;
+                    temp.height = sh;
+                    tCtx.drawImage(ccImg, 0, sy, ccImg.width, sh, 0, 0, ccImg.width, sh);
+                } else {
+                    const sx = start * ccImg.width;
+                    const sw = (end - start) * ccImg.width;
+                    temp.width = sw;
+                    temp.height = ccImg.height;
+                    tCtx.drawImage(ccImg, sx, 0, sw, ccImg.height, 0, 0, sw, ccImg.height);
+                }
+                
+                const data = temp.toDataURL('image/png').split(',')[1];
+                zip.file(`${ccFileName}_part_${i + 1}.png`, data, { base64: true });
+            }
+
+            const content = await zip.generateAsync({ type: "blob" });
+            downloadBlob(content, `${ccFileName}_custom_cuts.zip`);
+        }
+
+        // --- Tool: Bulk Split ---
+        let bulkSplitImgs = [];
+        let bulkSplitCfg = { cut: 'horizontal', stitch: 'vertical', swapped: false };
+        function handleBulkSplitUpload(input) {
+            readImages(input.files, imgs => {
+                bulkSplitImgs = imgs;
+                document.getElementById('bulk-split-empty').classList.add('hidden');
+                document.getElementById('dl-bulk-split-zip').style.display = 'block';
+                processBulkSplit();
+            });
+        }
+        function updateBulkSplitCfg(key, val) {
+            if (key === 'swap') bulkSplitCfg.swapped = !bulkSplitCfg.swapped;
+            else bulkSplitCfg[key] = val;
+            ['bsc-h', 'bsc-v', 'bss-h', 'bss-v'].forEach(id => document.getElementById(id).classList.remove('bg-white', 'dark:bg-slate-700', 'shadow-sm'));
+            document.getElementById(`bsc-${bulkSplitCfg.cut[0]}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            document.getElementById(`bss-${bulkSplitCfg.stitch[0]}`).classList.add('bg-white', 'dark:bg-slate-700', 'shadow-sm');
+            processBulkSplit();
+        }
+        function processBulkSplit() {
+            const gallery = document.getElementById('bulk-split-gallery');
+            gallery.innerHTML = '';
+            bulkSplitImgs.forEach((item, i) => {
+                const canvas = document.createElement('canvas');
+                renderSplitToCanvas(canvas, item.img, bulkSplitCfg);
+                const wrap = document.createElement('div');
+                wrap.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 rounded-lg';
+                canvas.className = 'w-full h-auto rounded';
+                wrap.appendChild(canvas);
+                gallery.appendChild(wrap);
+            });
+        }
+        async function downloadBulkSplitZip() {
+            const zip = new JSZip();
+            bulkSplitImgs.forEach((item, i) => {
+                const canvas = document.createElement('canvas');
+                renderSplitToCanvas(canvas, item.img, bulkSplitCfg);
+                const data = canvas.toDataURL('image/png').split(',')[1];
+                zip.file(`split_${item.name || i + '.png'}`, data, { base64: true });
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            downloadBlob(content, "bulk_split_images.zip");
+        }
+
+        // --- Tool: Merge ---
+        let mergeImgs = [];
+        function handleMergeUpload(input) {
+            readImages(input.files, imgs => {
+                mergeImgs = imgs.map(i => i.img);
+                document.getElementById('merge-empty').classList.add('hidden');
+                document.getElementById('dl-merge').style.display = 'block';
+                processMerge();
+            });
+        }
+        function processMerge() {
+            if (mergeImgs.length === 0) return;
+            const canvas = document.getElementById('merge-canvas');
+            const ctx = canvas.getContext('2d');
+            const layout = document.getElementById('merge-layout').value;
+            const normalize = document.getElementById('merge-normalize').checked;
+            const makeSquare = document.getElementById('merge-square').checked;
+            const fillSquare = document.getElementById('merge-fill').checked;
+            document.getElementById('fill-wrap').style.opacity = makeSquare ? '1' : '0.4';
+
+            const baseWidth = mergeImgs[0].width;
+            const baseHeight = mergeImgs[0].height;
+
+            const processed = mergeImgs.map(img => {
+                let w = img.width, h = img.height;
+                if (normalize) {
+                    const ratio = (layout === 'horizontal') ? (baseHeight / h) : (baseWidth / w);
+                    w *= ratio; h *= ratio;
+                }
+                if (makeSquare) {
+                    const side = Math.max(w, h);
+                    if (fillSquare) return { img, w, h, dw: side, dh: side, isCover: true };
+                    return { img, w, h, dw: side, dh: side, ox: (side-w)/2, oy: (side-h)/2, isCover: false };
+                }
+                return { img, w, h, dw: w, dh: h, ox: 0, oy: 0, isCover: false };
+            });
+
+            function drawItem(p, dx, dy) {
+                if (p.isCover) {
+                    const ir = p.img.width / p.img.height;
+                    let sw, sh, sx, sy;
+                    if (ir > 1) { sh = p.img.height; sw = sh; sx = (p.img.width - sw) / 2; sy = 0; }
+                    else { sw = p.img.width; sh = sw; sx = 0; sy = (p.img.height - sh) / 2; }
+                    ctx.drawImage(p.img, sx, sy, sw, sh, dx, dy, p.dw, p.dh);
+                } else { ctx.drawImage(p.img, dx + (p.ox || 0), dy + (p.oy || 0), p.w, p.h); }
+            }
+
+            if (layout === 'horizontal') {
+                canvas.width = processed.reduce((sum, p) => sum + p.dw, 0);
+                canvas.height = Math.max(...processed.map(p => p.dh));
+                let x = 0; processed.forEach(p => { drawItem(p, x, 0); x += p.dw; });
+            } else if (layout === 'vertical') {
+                canvas.width = Math.max(...processed.map(p => p.dw));
+                canvas.height = processed.reduce((sum, p) => sum + p.dh, 0);
+                let y = 0; processed.forEach(p => { drawItem(p, 0, y); y += p.dh; });
+            } else {
+                const cols = 2, rows = Math.ceil(processed.length / cols);
+                let cw = Math.max(...processed.map(p => p.dw)), ch = Math.max(...processed.map(p => p.dh));
+                canvas.width = cw * cols; canvas.height = ch * rows;
+                processed.forEach((p, i) => { drawItem(p, (i % cols) * cw, Math.floor(i / cols) * ch); });
+            }
+        }
+
+        // --- Tool: Resize ---
+        let resizeImgs = [];
+        function handleResizeUpload(input) {
+            readImages(input.files, imgs => {
+                resizeImgs = imgs;
+                document.getElementById('dl-resize-zip').style.display = 'block';
+            });
+        }
+        function toggleResizeInput() {
+            const mode = document.getElementById('resize-mode').value;
+            document.getElementById('resize-val-label').innerText = mode === 'percent' ? 'Value (%)' : mode + ' (px)';
+        }
+        function processResize() {
+            const mode = document.getElementById('resize-mode').value;
+            const val = parseFloat(document.getElementById('resize-val').value);
+            const gallery = document.getElementById('resize-gallery');
+            gallery.innerHTML = '';
+            resizeImgs.forEach((item, i) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                let nw, nh;
+                if (mode === 'percent') { nw = item.img.width * (val / 100); nh = item.img.height * (val / 100); }
+                else if (mode === 'width') { nw = val; nh = item.img.height * (val / item.img.width); }
+                else { nh = val; nw = item.img.width * (val / item.img.height); }
+                canvas.width = nw; canvas.height = nh;
+                ctx.drawImage(item.img, 0, 0, nw, nh);
+                const wrap = document.createElement('div');
+                wrap.className = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-center cursor-pointer hover:border-indigo-500';
+                wrap.innerHTML = `<p class="text-[8px] font-mono opacity-50 mb-1">${Math.round(nw)}x${Math.round(nh)}</p>`;
+                canvas.className = 'w-full h-auto rounded';
+                wrap.onclick = () => downloadCanvasElement(canvas, `resized_${item.name || i + '.png'}`);
+                wrap.appendChild(canvas); gallery.appendChild(wrap);
+                item.processedCanvas = canvas; // Keep for ZIP
+            });
+        }
+        async function downloadResizeZip() {
+            const zip = new JSZip();
+            resizeImgs.forEach((item, i) => {
+                if (item.processedCanvas) {
+                    const data = item.processedCanvas.toDataURL('image/png').split(',')[1];
+                    zip.file(`resized_${item.name || i + '.png'}`, data, { base64: true });
+                }
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            downloadBlob(content, "resized_images.zip");
+        }
+
+        // --- Tool: Mass Crop ---
+        let cropItems = [];
+        function handleCropUpload(input) {
+            readImages(input.files, imgs => {
+                cropItems = imgs.map(item => ({ img: item.img, name: item.name, offsetX: 0, offsetY: 0, scale: 1.0 }));
+                document.getElementById('dl-all-crops-zip').style.display = 'block';
+                updateCropGrid();
+            });
+        }
+        function updateCropGrid() {
+            const grid = document.getElementById('crop-grid');
+            if (!grid) return;
+            const ratio = parseFloat(document.getElementById('crop-ratio').value);
+            grid.innerHTML = '';
+            cropItems.forEach((data, i) => {
+                const card = document.createElement('div');
+                card.className = 'bg-white dark:bg-slate-900 border dark:border-slate-800 p-3 rounded-xl space-y-3';
+                const win = document.createElement('div');
+                win.className = 'crop-window rounded-lg bg-black'; win.style.aspectRatio = ratio;
+                const canvas = document.createElement('canvas');
+                canvas.id = `crop-canvas-${i}`; canvas.className = 'w-full h-full block';
+                win.appendChild(canvas);
+                const draw = () => {
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 1200; canvas.height = 1200 / ratio;
+                    const ir = data.img.width / data.img.height, cr = canvas.width / canvas.height;
+                    let bw, bh;
+                    if (ir > cr) { bh = canvas.height; bw = bh * ir; } else { bw = canvas.width; bh = bw / ir; }
+                    const cw = bw * data.scale, ch = bh * data.scale;
+                    const mx = (cw - canvas.width) / 2, my = (ch - canvas.height) / 2;
+                    data.offsetX = Math.max(-mx, Math.min(mx, data.offsetX));
+                    data.offsetY = Math.max(-my, Math.min(my, data.offsetY));
+                    ctx.fillStyle = "#000"; ctx.fillRect(0,0, canvas.width, canvas.height);
+                    ctx.drawImage(data.img, (canvas.width - cw)/2 + data.offsetX, (canvas.height - ch)/2 + data.offsetY, cw, ch);
+                };
+                let isDragging = false, lx, ly;
+                const st = (x, y) => { isDragging = true; lx = x; ly = y; };
+                const mv = (x, y) => {
+                    if (!isDragging) return;
+                    const sf = canvas.width / win.getBoundingClientRect().width;
+                    data.offsetX += (x - lx) * sf; data.offsetY += (y - ly) * sf;
+                    lx = x; ly = y; draw();
+                };
+                win.onmousedown = e => st(e.clientX, e.clientY);
+                window.addEventListener('mousemove', e => mv(e.clientX, e.clientY));
+                window.addEventListener('mouseup', () => isDragging = false);
+                win.ontouchstart = e => st(e.touches[0].clientX, e.touches[0].clientY);
+                win.ontouchmove = e => { mv(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+                const zoom = document.createElement('div');
+                zoom.innerHTML = `<input type="range" min="1" max="3" step="0.01" value="${data.scale}" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600">`;
+                zoom.querySelector('input').oninput = e => { data.scale = parseFloat(e.target.value); draw(); };
+                card.appendChild(win); card.appendChild(zoom); grid.appendChild(card);
+                setTimeout(draw, 100);
+            });
+        }
+        async function downloadAllCropsZip() {
+            const zip = new JSZip();
+            cropItems.forEach((item, i) => {
+                const c = document.getElementById(`crop-canvas-${i}`);
+                if (c) {
+                    const data = c.toDataURL('image/png').split(',')[1];
+                    zip.file(`crop_${item.name || i + '.png'}`, data, { base64: true });
+                }
+            });
+            const content = await zip.generateAsync({ type: "blob" });
+            downloadBlob(content, "cropped_images.zip");
+        }
+
+        // --- Global Utils ---
+        function downloadCanvas(id) { downloadCanvasElement(document.getElementById(id), 'image.png'); }
+        function downloadCanvasElement(el, name) {
+            const link = document.createElement('a'); link.download = name;
+            link.href = el.toDataURL('image/png', 1.0); link.click();
+        }
+        function downloadBlob(blob, filename) {
+            const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
+            link.download = filename; link.click();
+        }
+    </script>
+</body>
+</html>
